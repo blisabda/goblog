@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"gorm.io/gorm/clause"
 	"time"
 
 	glog "github.com/digitalysin/goblog/logger"
@@ -23,9 +24,14 @@ type (
 		First(object interface{}) error
 		Last(object interface{}) error
 		Find(object interface{}) error
+		Model(value interface{}) ORM
+		Select(query interface{}, args ...interface{}) ORM
+		OmitAssoc() ORM
 		Where(query interface{}, args ...interface{}) ORM
+		Order(value interface{}) ORM
 		Create(args interface{}) error
 		Update(args interface{}) error
+		UpdateColumns(args interface{}) error
 		Delete(model interface{}, args ...interface{}) error
 		WithContext(ctx context.Context) ORM
 		Raw(query string, args ...interface{}) ORM
@@ -33,6 +39,7 @@ type (
 		Scan(object interface{}) error
 		Preload(assoc string) ORM
 		Joins(assoc string) ORM
+		Ping() error
 	}
 
 	mysqldb struct {
@@ -41,6 +48,13 @@ type (
 	}
 
 	MySqlOption struct {
+		ConnectionString                     string
+		MaxLifeTimeConnection                time.Duration
+		MaxIdleConnection, MaxOpenConnection int
+		Logger                               glog.Logger
+	}
+
+	SqlServerOption struct {
 		ConnectionString                     string
 		MaxLifeTimeConnection                time.Duration
 		MaxIdleConnection, MaxOpenConnection int
@@ -142,11 +156,47 @@ func (d *mysqldb) Find(object interface{}) error {
 	return nil
 }
 
+func (d *mysqldb) Model(value interface{}) ORM {
+	var (
+		db  = d.db.Model(value)
+		err = db.Error
+	)
+
+	return &mysqldb{db, err}
+}
+
+func (d *mysqldb) OmitAssoc() ORM {
+	var (
+		db  = d.db.Omit(clause.Associations)
+		err = db.Error
+	)
+
+	return &mysqldb{db, err}
+}
+
+func (d *mysqldb) Select(query interface{}, args ...interface{}) ORM {
+	var (
+		db  = d.db.Select(query, args...)
+		err = db.Error
+	)
+
+	return &mysqldb{db, err}
+}
+
 func (d *mysqldb) Where(query interface{}, args ...interface{}) ORM {
 	var (
 		db  = d.db.Where(query, args...)
 		err = db.Error
 	)
+	return &mysqldb{db, err}
+}
+
+func (d *mysqldb) Order(value interface{}) ORM {
+	var (
+		db  = d.db.Order(value)
+		err = d.db.Error
+	)
+
 	return &mysqldb{db, err}
 }
 
@@ -156,7 +206,10 @@ func (d *mysqldb) Create(args interface{}) error {
 
 func (d *mysqldb) Update(args interface{}) error {
 	return d.db.Updates(args).Error
+}
 
+func (d *mysqldb) UpdateColumns(args interface{}) error {
+	return d.db.UpdateColumns(args).Error
 }
 
 func (d *mysqldb) Delete(model interface{}, args ...interface{}) error {
@@ -212,6 +265,18 @@ func (d *mysqldb) Joins(assoc string) ORM {
 	)
 
 	return &mysqldb{db, err}
+}
+
+func (d *mysqldb) Ping() error {
+	var (
+		db, err = d.db.DB()
+	)
+
+	if err != nil {
+		return err
+	}
+
+	return db.Ping()
 }
 
 func NewMySql(option *MySqlOption) (ORM, error) {
